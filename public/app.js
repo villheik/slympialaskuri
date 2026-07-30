@@ -395,6 +395,7 @@ createApp({
     async function saveCustomValue(colId, pid, value) {
       try {
         await put(`/api/competitions/${currentComp.value.id}/custom-columns/${colId}/values/${pid}`, { value })
+        await loadState()
       } catch(e) { toast(e.message) }
     }
 
