@@ -234,7 +234,7 @@ td.total-col { font-size: 1.2rem; font-weight: 700; }
 /* ---------- Sortable + draggable column headers ---------- */
 th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { color: var(--text); }
-th.col-draggable { cursor: grab; user-select: none; }
+th.col-draggable { cursor: grab; user-select: none; touch-action: none; }
 th.col-drag-over { background: #eff6ff; color: var(--primary); }
 .col-drag-ghost {
   background: var(--primary); color: #fff;
