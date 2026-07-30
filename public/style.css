@@ -98,7 +98,10 @@ input:focus, select:focus { outline: 2px solid var(--primary); outline-offset: -
 .list-item-actions { display: flex; gap: 4px; }
 
 /* ---------- Tabs ---------- */
-.tabs { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+.tabs { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+.tab-suorita { margin-left: auto; background: var(--success); color: #fff; border-color: var(--success); }
+.tab-suorita:hover { background: #15803d; border-color: #15803d; color: #fff; }
+.tab-suorita.active { background: #15803d; border-color: #15803d; }
 .tab {
   padding: 8px 14px;
   border-radius: 8px;

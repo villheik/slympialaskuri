@@ -567,9 +567,11 @@ createApp({
         </div>
 
         <div class="tabs">
-          <button v-for="tab in [{id:'standings',label:'Kokonaiskilpailu'},{id:'suorita',label:'Suorita kisat'},{id:'events',label:'Lajit'},{id:'participants',label:'Osallistujat'},{id:'teams',label:'Tiimit'}]"
+          <button v-for="tab in [{id:'standings',label:'Kokonaiskilpailu'},{id:'events',label:'Lajit'},{id:'participants',label:'Osallistujat'},{id:'teams',label:'Tiimit'}]"
             :key="tab.id" class="tab" :class="{ active: activeTab === tab.id }"
             @click="switchTab(tab.id)">{{ tab.label }}</button>
+          <button class="tab tab-suorita" :class="{ active: activeTab === 'suorita' }"
+            @click="switchTab('suorita')">Suorita kisat</button>
         </div>
 
         <!-- STANDINGS -->
