@@ -156,6 +156,14 @@ td.total-col { font-size: 1.2rem; font-weight: 700; }
 .exec-score-input { width: 130px; font-size: 1.1rem; padding: 10px 12px; }
 .exec-score-unit { min-width: 32px; color: var(--text-muted); font-size: 14px; }
 
+/* ---------- Standings name link + detail panel ---------- */
+.standings-name-link { cursor: pointer; color: var(--primary); font-weight: 500; }
+.standings-name-link:hover { text-decoration: underline; }
+.standing-detail { padding: 10px 14px; background: var(--bg); }
+.standing-detail-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.standing-detail-row:last-child { border-bottom: none; }
+.standing-detail-label { flex: 1; font-size: 14px; color: var(--text-muted); }
+
 /* ---------- Standings +/- outside card ---------- */
 .standings-outer { display: flex; gap: 8px; align-items: flex-start; }
 .standings-card { flex: 1; min-width: 0; }

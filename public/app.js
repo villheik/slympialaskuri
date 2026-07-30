@@ -47,6 +47,7 @@ createApp({
     const sortDir = ref('desc')
     const standingsOrder = ref(null)
     const columnOrder = ref([...DEFAULT_COL_ORDER])
+    const openStandingId = ref(null)
 
     // ── Spacer height for +/- column alignment ──
     const standingsCardRef = ref(null)
@@ -102,6 +103,8 @@ createApp({
     })
 
     watch(sortedStandings, measureAdjSpacer)
+
+    const visibleColumnOrder = computed(() => columnOrder.value.filter(id => !id.startsWith('col_')))
 
     const unassignedParticipants = computed(() => {
       if (!state.value) return []
@@ -186,6 +189,12 @@ createApp({
     function modeLabel(ev) { return ev.mode === 'team' ? 'Tiimilaji' : 'Yksilölaji' }
     function dirLabel(ev) { return ev.sort_direction === 'asc' ? '↑ pienin voittaa' : '↓ suurin voittaa' }
 
+    function colHeaderStyle(colId) {
+      if (['teamPts', 'individual'].includes(colId)) return { width: '54px', textAlign: 'right' }
+      if (colId === 'total') return { width: '68px', textAlign: 'right' }
+      return {}
+    }
+
     function cellValue(colId, s) {
       if (colId === 'team') return s.teamName ?? '—'
       if (colId === 'teamPts') return s.teamPoints
@@ -219,6 +228,7 @@ createApp({
       sortCol.value = null
       sortDir.value = 'desc'
       columnOrder.value = [...DEFAULT_COL_ORDER]
+      openStandingId.value = null
     }
 
     async function doLogin() {
@@ -516,11 +526,12 @@ createApp({
       toastMsg, toastVisible,
       currentUser, competitions, currentComp, state, activeTab, openEventId,
       sortedStandings, unassignedParticipants, pendingEvents, completedEvents,
-      sortCol, sortDir, columnOrder, adjSpacerHeight,
+      sortCol, sortDir, columnOrder, visibleColumnOrder, adjSpacerHeight,
+      openStandingId,
       standingsCardRef, standingsTheadRef,
       loginUsername, newCompName, newParticipantName, newTeamName, newColName,
       newEvName, newEvUnit, newEvMode, newEvDir, newEvPoints,
-      colLabel, isSortableCol, cellValue,
+      colLabel, isSortableCol, cellValue, colHeaderStyle,
       sortBy, sortIndicator, teamMembersFor, customValueFor,
       eventPointsFor, resultFor, entrantsFor, modeLabel, dirLabel,
       editValues, openEvent, saveEventEdit,
@@ -606,10 +617,11 @@ createApp({
                   <thead ref="standingsTheadRef">
                     <tr>
                       <th style="width:2rem">#</th>
-                      <th>Nimi</th>
-                      <th v-for="colId in columnOrder" :key="colId"
+                      <th style="min-width:70px">Nimi</th>
+                      <th v-for="colId in visibleColumnOrder" :key="colId"
                         class="col-draggable"
-                        :class="{ sortable: isSortableCol(colId), 'col-drag-over': false }"
+                        :class="{ sortable: isSortableCol(colId) }"
+                        :style="colHeaderStyle(colId)"
                         :data-col-id="colId"
                         @click="isSortableCol(colId) ? sortBy(colId) : null">
                         {{ colLabel(colId) }}<template v-if="isSortableCol(colId)"> {{ sortIndicator(colId) }}</template>
@@ -618,22 +630,32 @@ createApp({
                   </thead>
                   <tbody>
                     <tr v-if="!sortedStandings.length">
-                      <td :colspan="2 + columnOrder.length" class="empty">Ei osallistujia</td>
+                      <td :colspan="2 + visibleColumnOrder.length" class="empty">Ei osallistujia</td>
                     </tr>
-                    <tr v-for="(s, i) in sortedStandings" :key="s.participantId">
-                      <td class="rank-col">{{ i + 1 }}</td>
-                      <td>{{ s.name }}</td>
-                      <td v-for="colId in columnOrder" :key="colId"
-                        :class="{ 'points-col': ['teamPts','individual'].includes(colId), 'total-col': colId === 'total' }">
-                        <template v-if="colId.startsWith('col_')">
-                          <input class="score-input" style="width:80px"
-                            :value="customValueFor(parseInt(colId.slice(4)), s.participantId)"
-                            placeholder="—"
-                            @blur="saveCustomValue(parseInt(colId.slice(4)), s.participantId, $event.target.value)">
-                        </template>
-                        <template v-else>{{ cellValue(colId, s) }}</template>
-                      </td>
-                    </tr>
+                    <template v-for="(s, i) in sortedStandings" :key="s.participantId">
+                      <tr>
+                        <td class="rank-col">{{ i + 1 }}</td>
+                        <td class="standings-name-link" @click="openStandingId = openStandingId === s.participantId ? null : s.participantId">{{ s.name }}</td>
+                        <td v-for="colId in visibleColumnOrder" :key="colId"
+                          :class="{ 'points-col': ['teamPts','individual'].includes(colId), 'total-col': colId === 'total' }">
+                          {{ cellValue(colId, s) }}
+                        </td>
+                      </tr>
+                      <tr v-if="openStandingId === s.participantId">
+                        <td :colspan="2 + visibleColumnOrder.length" style="padding:0">
+                          <div class="standing-detail">
+                            <div v-if="!state.customColumns.length" class="empty" style="padding:8px 0">Ei lisätietoja.</div>
+                            <div v-for="col in state.customColumns" :key="col.id" class="standing-detail-row">
+                              <span class="standing-detail-label">{{ col.name }}</span>
+                              <input class="score-input" style="width:90px"
+                                :value="customValueFor(col.id, s.participantId)"
+                                placeholder="—"
+                                @blur="saveCustomValue(col.id, s.participantId, $event.target.value)">
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    </template>
                   </tbody>
                 </table>
               </div>
@@ -650,9 +672,10 @@ createApp({
           </div>
 
           <div class="card">
-            <div class="section-title">Lisäsarakkeet</div>
+            <div class="section-title">Lisätiedot</div>
+            <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Paina osallistujan nimeä taulukossa nähdäksesi ja muokataksesi tietoja.</p>
             <div class="input-row">
-              <input v-model="newColName" type="text" placeholder="Sarakkeen nimi">
+              <input v-model="newColName" type="text" placeholder="Kentän nimi">
               <button class="btn-ghost btn-sm" @click="addCustomColumn">+ Lisää</button>
             </div>
             <div v-for="col in state.customColumns" :key="col.id" class="list-item">
