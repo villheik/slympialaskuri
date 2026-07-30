@@ -5,6 +5,9 @@ let currentComp = null;
 let state = null; // full competition state from /api/competitions/:id/state
 let activeTab = 'standings';
 let openEventId = null;
+let standingsOrder = null; // array of participantIds — preserves order across adjustments
+let sortCol = null;        // 'individual' | 'team' | null
+let sortDir = 'desc';
 
 // ---------- API helpers ----------
 async function api(method, path, body) {
@@ -130,6 +133,9 @@ async function openComp(comp) {
   state = await get(`/api/competitions/${comp.id}/state`);
   activeTab = 'standings';
   openEventId = null;
+  standingsOrder = null;
+  sortCol = null;
+  sortDir = 'desc';
   render();
 }
 
@@ -169,14 +175,55 @@ function attachCompHandlers() {
     btn.addEventListener('click', () => { activeTab = btn.dataset.tab; openEventId = null; render(); });
   });
   document.getElementById('back-btn')?.addEventListener('click', () => { currentComp = null; state = null; render(); });
+  document.querySelectorAll('th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.sort;
+      if (sortCol === col) sortDir = sortDir === 'desc' ? 'asc' : 'desc';
+      else { sortCol = col; sortDir = 'desc'; }
+      render();
+    });
+  });
 }
 
 // ---------- Standings ----------
+function getSortedStandings() {
+  const standings = state.standings;
+  if (sortCol) {
+    const dir = sortDir === 'desc' ? 1 : -1;
+    const sorted = [...standings].sort((a, b) => {
+      if (sortCol === 'individual') return dir * (b.individualPoints - a.individualPoints);
+      // team: sort by teamPoints, tiebreak by individualPoints desc
+      const td = dir * (b.teamPoints - a.teamPoints);
+      return td !== 0 ? td : b.individualPoints - a.individualPoints;
+    });
+    standingsOrder = sorted.map(s => s.participantId);
+    return sorted;
+  }
+  if (standingsOrder) {
+    const map = new Map(standings.map(s => [s.participantId, s]));
+    const ordered = standingsOrder.map(id => map.get(id)).filter(Boolean);
+    const known = new Set(standingsOrder);
+    const newOnes = standings.filter(s => !known.has(s.participantId));
+    const result = [...ordered, ...newOnes];
+    standingsOrder = result.map(s => s.participantId);
+    return result;
+  }
+  // First render: use server order and lock it in
+  standingsOrder = standings.map(s => s.participantId);
+  return standings;
+}
+
+function sortIndicator(col) {
+  if (sortCol !== col) return ' <span style="opacity:.35">↕</span>';
+  return sortDir === 'desc' ? ' ↓' : ' ↑';
+}
+
 function renderStandings() {
-  const { standings, customColumns, customValues, adjustments } = state;
+  const { customColumns, customValues } = state;
+  const sorted = getSortedStandings();
 
   const colHeaders = customColumns.map(c => `<th>${esc(c.name)}</th>`).join('');
-  const rows = standings.map((s, i) => {
+  const rows = sorted.map((s, i) => {
     const adjVal = s.adjustment || 0;
     const colCells = customColumns.map(col => {
       const val = customValues.find(v => v.column_id === col.id && v.participant_id === s.participantId);
@@ -186,7 +233,9 @@ function renderStandings() {
     return `<tr>
       <td class="rank-col">${i + 1}</td>
       <td>${esc(s.name)}</td>
-      <td class="points-col">${s.total}</td>
+      <td class="points-col">${s.individualPoints}</td>
+      <td>${esc(s.teamName ?? '—')}</td>
+      <td class="points-col">${s.teamPoints}</td>
       <td>
         <div class="adj-row">
           <button class="btn-ghost btn-icon btn-sm adj-btn" data-pid="${s.participantId}" data-delta="-1">−</button>
@@ -215,8 +264,16 @@ function renderStandings() {
       <div class="card-title">Kokonaispisteet</div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>#</th><th>Nimi</th><th>Pisteet</th><th>Säätö</th>${colHeaders}</tr></thead>
-          <tbody>${rows || '<tr><td colspan="4" class="empty">Ei osallistujia</td></tr>'}</tbody>
+          <thead><tr>
+            <th>#</th>
+            <th>Nimi</th>
+            <th class="sortable" data-sort="individual">Yksilöp.${sortIndicator('individual')}</th>
+            <th>Tiimi</th>
+            <th class="sortable" data-sort="team">Tiimipit.${sortIndicator('team')}</th>
+            <th>Säätö</th>
+            ${colHeaders}
+          </tr></thead>
+          <tbody>${rows || '<tr><td colspan="6" class="empty">Ei osallistujia</td></tr>'}</tbody>
         </table>
       </div>
     </div>

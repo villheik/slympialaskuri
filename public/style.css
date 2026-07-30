@@ -166,6 +166,10 @@ td.points-col { font-size: 1.05rem; }
 /* ---------- Chip ---------- */
 .chip { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 99px; background: var(--bg); border: 1px solid var(--border); color: var(--text-muted); }
 
+/* ---------- Sortable headers ---------- */
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { color: var(--text); }
+
 /* ---------- Empty state ---------- */
 .empty { color: var(--text-muted); font-size: 14px; text-align: center; padding: 20px 0; }
 

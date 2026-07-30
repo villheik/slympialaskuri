@@ -320,8 +320,9 @@ function computeStandings(participants, teams, teamMembers, events, eventPoints,
     defaultMembers[tm.team_id].push(tm.participant_id);
   }
 
-  const scores = {};
-  for (const p of participants) scores[p.id] = 0;
+  const individualScores = {};
+  const teamScores = {};
+  for (const p of participants) { individualScores[p.id] = 0; teamScores[p.id] = 0; }
 
   for (const event of events) {
     const eventResults = results.filter(r => r.event_id === event.id);
@@ -342,7 +343,7 @@ function computeStandings(participants, teams, teamMembers, events, eventPoints,
 
     if (event.mode === 'individual') {
       for (const r of ranked) {
-        if (scores[r.entrant_id] !== undefined) scores[r.entrant_id] += pts[r.rank] ?? 0;
+        if (individualScores[r.entrant_id] !== undefined) individualScores[r.entrant_id] += pts[r.rank] ?? 0;
       }
     } else {
       for (const r of ranked) {
@@ -350,7 +351,7 @@ function computeStandings(participants, teams, teamMembers, events, eventPoints,
         const members = overrideMap[key] ?? defaultMembers[r.entrant_id] ?? [];
         const teamPts = pts[r.rank] ?? 0;
         for (const pid of members) {
-          if (scores[pid] !== undefined) scores[pid] += teamPts;
+          if (teamScores[pid] !== undefined) teamScores[pid] += teamPts;
         }
       }
     }
@@ -359,11 +360,22 @@ function computeStandings(participants, teams, teamMembers, events, eventPoints,
   const adjMap = {};
   for (const a of adjustments) adjMap[a.participant_id] = a.value;
 
+  const participantTeam = {};
+  for (const tm of teamMembers) {
+    if (!participantTeam[tm.participant_id]) participantTeam[tm.participant_id] = tm.team_id;
+  }
+  const teamNameMap = {};
+  for (const t of teams) teamNameMap[t.id] = t.name;
+
   return participants.map(p => ({
     participantId: p.id,
     name: p.name,
-    total: (scores[p.id] ?? 0) + (adjMap[p.id] ?? 0),
-    adjustment: adjMap[p.id] ?? 0
+    individualPoints: individualScores[p.id] ?? 0,
+    teamPoints: teamScores[p.id] ?? 0,
+    adjustment: adjMap[p.id] ?? 0,
+    total: (individualScores[p.id] ?? 0) + (teamScores[p.id] ?? 0) + (adjMap[p.id] ?? 0),
+    teamId: participantTeam[p.id] ?? null,
+    teamName: participantTeam[p.id] ? (teamNameMap[participantTeam[p.id]] ?? null) : null,
   })).sort((a, b) => b.total - a.total);
 }
 
