@@ -481,18 +481,35 @@ createApp({
       }
     }
 
+    function onPointerCancel() {
+      if (chipGhost) {
+        chipGhost.remove(); chipGhost = null
+        if (chipSrc) { chipSrc.style.opacity = ''; chipSrc = null }
+        document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('drag-over'))
+        dragPid = null
+      }
+      if (colGhost) {
+        colGhost.remove(); colGhost = null
+        if (colSrc) { colSrc.style.opacity = ''; colSrc = null }
+        document.querySelectorAll('.col-draggable').forEach(th => th.classList.remove('col-drag-over'))
+        dragColId = null; colDropTarget = null
+      }
+    }
+
     onMounted(async () => {
       currentUser.value = await get('/api/me')
       if (currentUser.value) competitions.value = await get('/api/competitions')
       document.addEventListener('pointerdown', onPointerDown, { passive: false })
       document.addEventListener('pointermove', onPointerMove)
       document.addEventListener('pointerup', onPointerUp)
+      document.addEventListener('pointercancel', onPointerCancel)
     })
 
     onBeforeUnmount(() => {
       document.removeEventListener('pointerdown', onPointerDown)
       document.removeEventListener('pointermove', onPointerMove)
       document.removeEventListener('pointerup', onPointerUp)
+      document.removeEventListener('pointercancel', onPointerCancel)
     })
 
     return {

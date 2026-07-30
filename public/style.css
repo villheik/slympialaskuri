@@ -116,8 +116,8 @@ input:focus, select:focus { outline: 2px solid var(--primary); outline-offset: -
 .tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
 
 /* ---------- Table ---------- */
-.table-wrap { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table { width: 100%; min-width: max-content; border-collapse: collapse; font-size: 15px; }
 th { text-align: left; padding: 8px 10px; border-bottom: 2px solid var(--border); font-weight: 600; color: var(--text-muted); font-size: 13px; white-space: nowrap; }
 td { padding: 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 tr:last-child td { border-bottom: none; }
