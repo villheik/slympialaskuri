@@ -373,7 +373,7 @@ function computeStandings(participants, teams, teamMembers, events, eventPoints,
   return participants.map(p => ({
     participantId: p.id,
     name: p.name,
-    individualPoints: individualScores[p.id] ?? 0,
+    individualPoints: (individualScores[p.id] ?? 0) + (adjMap[p.id] ?? 0),
     teamPoints: teamScores[p.id] ?? 0,
     adjustment: adjMap[p.id] ?? 0,
     total: (individualScores[p.id] ?? 0) + (teamScores[p.id] ?? 0) + (adjMap[p.id] ?? 0),
