@@ -146,6 +146,13 @@ td.total-col { font-size: 1.2rem; font-weight: 700; }
 .score-input { width: 110px; padding: 6px 10px; }
 .score-result { font-size: 13px; color: var(--text-muted); min-width: 60px; text-align: right; }
 
+/* ---------- Execution view ---------- */
+.exec-score-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.exec-score-row:last-child { border-bottom: none; }
+.exec-score-name { flex: 1; font-size: 1rem; font-weight: 500; }
+.exec-score-input { width: 130px; font-size: 1.1rem; padding: 10px 12px; }
+.exec-score-unit { min-width: 32px; color: var(--text-muted); font-size: 14px; }
+
 /* ---------- Adjust buttons ---------- */
 .adj-row { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-bottom: 1px solid var(--border); }
 .adj-row:last-child { border-bottom: none; }

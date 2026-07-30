@@ -52,6 +52,7 @@ createApp({
     const newEvUnit = ref('')
     const newEvMode = ref('individual')
     const newEvDir = ref('desc')
+    const newEvPoints = ref([3, 2, 1])
 
     // ── Computed ──
     const sortedStandings = computed(() => {
@@ -85,6 +86,9 @@ createApp({
       const assigned = new Set(state.value.teamMembers.map(tm => tm.participant_id))
       return state.value.participants.filter(p => !assigned.has(p.id))
     })
+
+    const pendingEvents = computed(() => (state.value?.events || []).filter(ev => ev.status === 'pending'))
+    const completedEvents = computed(() => (state.value?.events || []).filter(ev => ev.status === 'completed'))
 
     // ── Helpers ──
     function sortIndicator(col) {
@@ -199,15 +203,41 @@ createApp({
     async function addEvent() {
       if (!newEvName.value.trim()) return
       try {
-        await post(`/api/competitions/${currentComp.value.id}/events`, {
+        const cid = currentComp.value.id
+        const ev = await post(`/api/competitions/${cid}/events`, {
           name: newEvName.value.trim(),
           unit: newEvUnit.value.trim() || null,
           mode: newEvMode.value,
           sort_direction: newEvDir.value,
         })
+        if (newEvPoints.value.length > 0) {
+          const pointsMap = {}
+          newEvPoints.value.forEach((pts, i) => { pointsMap[i + 1] = pts })
+          await put(`/api/competitions/${cid}/events/${ev.id}/points`, { pointsMap })
+        }
         newEvName.value = ''; newEvUnit.value = ''
+        newEvPoints.value = [3, 2, 1]
         await loadState()
       } catch(e) { toast(e.message) }
+    }
+
+    async function completeAndAdvance(ev) {
+      try {
+        await put(`/api/competitions/${currentComp.value.id}/events/${ev.id}/status`, { status: 'completed' })
+        await loadState()
+        const next = state.value.events.find(e => e.status === 'pending')
+        openEventId.value = next?.id ?? null
+      } catch(e) { toast(e.message) }
+    }
+
+    function switchTab(id) {
+      activeTab.value = id
+      if (id === 'suorita') {
+        const first = state.value?.events.find(ev => ev.status === 'pending')
+        openEventId.value = first?.id ?? null
+      } else {
+        openEventId.value = null
+      }
     }
 
     async function deleteEvent(eid) {
@@ -340,13 +370,15 @@ createApp({
       sortedStandings, unassignedParticipants,
       sortCol, sortDir, sortBy, sortIndicator,
       loginUsername, newCompName, newParticipantName, newTeamName, newColName,
-      newEvName, newEvUnit, newEvMode, newEvDir,
+      newEvName, newEvUnit, newEvMode, newEvDir, newEvPoints,
+      pendingEvents, completedEvents,
       teamMembersFor, customValueFor, eventPointsFor, resultFor, entrantsFor,
       modeLabel, dirLabel,
-      openComp, doLogin, doLogout, createComp,
+      openComp, doLogin, doLogout, createComp, switchTab,
       addParticipant, deleteParticipant,
       addTeam, deleteTeam,
       addEvent, deleteEvent, toggleStatus, saveScore, deleteResult, savePoints,
+      completeAndAdvance,
       adjust, addCustomColumn, deleteCustomColumn, saveCustomValue,
     }
   },
@@ -403,13 +435,17 @@ createApp({
         </div>
 
         <div class="tabs">
-          <button v-for="tab in [{id:'standings',label:'Kokonaiskilpailu'},{id:'events',label:'Lajit'},{id:'participants',label:'Osallistujat'},{id:'teams',label:'Tiimit'}]"
+          <button v-for="tab in [{id:'standings',label:'Kokonaiskilpailu'},{id:'suorita',label:'Suorita kisat'},{id:'events',label:'Lajit'},{id:'participants',label:'Osallistujat'},{id:'teams',label:'Tiimit'}]"
             :key="tab.id" class="tab" :class="{ active: activeTab === tab.id }"
-            @click="activeTab = tab.id; openEventId = null">{{ tab.label }}</button>
+            @click="switchTab(tab.id)">{{ tab.label }}</button>
         </div>
 
         <!-- STANDINGS -->
         <template v-if="activeTab === 'standings'">
+          <div v-if="pendingEvents.length" style="margin-bottom:16px">
+            <button class="btn-success btn-block" style="padding:16px;font-size:1.05rem;font-weight:700"
+              @click="switchTab('suorita')">Aloita kisat →</button>
+          </div>
           <div class="card">
             <div class="card-title">Kokonaispisteet</div>
             <div class="table-wrap">
@@ -474,13 +510,13 @@ createApp({
           <div v-for="ev in state.events" :key="ev.id" class="event-card">
             <div class="event-header" @click="openEventId = openEventId === ev.id ? null : ev.id">
               <span class="event-name">{{ ev.name }}</span>
-              <span class="event-meta">{{ modeLabel(ev) }}</span>
+              <span class="event-meta">{{ modeLabel(ev) }}{{ ev.unit ? ' · ' + ev.unit : '' }}</span>
               <span class="event-status" :class="ev.status === 'completed' ? 'status-completed' : 'status-pending'">
                 {{ ev.status === 'completed' ? 'Valmis' : 'Kesken' }}
               </span>
             </div>
             <div v-if="openEventId === ev.id" class="event-body">
-              <div class="section-title">Pistetaulukko</div>
+              <div class="section-title">Pisteet sijoittain</div>
               <div class="points-grid">
                 <template v-for="ep in eventPointsFor(ev.id)" :key="ep.rank">
                   <label>{{ ep.rank }}. sija</label>
@@ -490,24 +526,25 @@ createApp({
               </div>
               <button class="btn-ghost btn-sm" @click="savePoints(ev.id)">Tallenna pisteet</button>
 
-              <div class="section-title" style="margin-top:16px">
-                Tulokset
-                <span class="chip">{{ modeLabel(ev) }} · {{ dirLabel(ev) }}{{ ev.unit ? ' · ' + ev.unit : '' }}</span>
-              </div>
-              <div v-for="ent in entrantsFor(ev)" :key="ent.id" class="score-row">
-                <span class="score-name">{{ ent.name }}</span>
-                <input type="number" inputmode="decimal" class="score-input"
-                  :value="resultFor(ev.id, ent.id)?.raw_score ?? ''"
-                  placeholder="—"
-                  @blur="saveScore(ev.id, ent.id, ev.mode === 'team' ? 'team' : 'participant', $event.target.value)">
-                <button v-if="resultFor(ev.id, ent.id)" class="btn-ghost btn-sm"
-                  @click="deleteResult(ev.id, ev.mode === 'team' ? 'team' : 'participant', ent.id)">✕</button>
-                <span v-else style="width:42px"></span>
-              </div>
+              <template v-if="ev.status === 'completed'">
+                <div class="section-title" style="margin-top:16px">
+                  Tulokset
+                  <span class="chip">{{ dirLabel(ev) }}</span>
+                </div>
+                <div v-for="ent in entrantsFor(ev)" :key="ent.id" class="score-row">
+                  <span class="score-name">{{ ent.name }}</span>
+                  <input type="number" inputmode="decimal" class="score-input"
+                    :value="resultFor(ev.id, ent.id)?.raw_score ?? ''"
+                    placeholder="—"
+                    @blur="saveScore(ev.id, ent.id, ev.mode === 'team' ? 'team' : 'participant', $event.target.value)">
+                  <button v-if="resultFor(ev.id, ent.id)" class="btn-ghost btn-sm"
+                    @click="deleteResult(ev.id, ev.mode === 'team' ? 'team' : 'participant', ent.id)">✕</button>
+                  <span v-else style="width:42px"></span>
+                </div>
+              </template>
 
               <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-                <button :class="ev.status === 'completed' ? 'btn-ghost btn-sm' : 'btn-success btn-sm'"
-                  @click="toggleStatus(ev)">
+                <button class="btn-ghost btn-sm" @click="toggleStatus(ev)">
                   {{ ev.status === 'completed' ? 'Merkitse kesken' : 'Merkitse valmiiksi' }}
                 </button>
                 <button class="btn-danger btn-sm" @click="deleteEvent(ev.id)">Poista laji</button>
@@ -530,7 +567,57 @@ createApp({
                 <option value="asc">Pienin voittaa</option>
               </select>
             </div>
+            <div class="section-title">Pisteet sijoittain</div>
+            <div class="points-grid">
+              <template v-for="(pts, i) in newEvPoints" :key="i">
+                <label>{{ i + 1 }}. sija</label>
+                <div style="display:flex;gap:6px;align-items:center">
+                  <input type="number" inputmode="decimal" v-model.number="newEvPoints[i]">
+                  <button v-if="newEvPoints.length > 1" class="btn-ghost btn-sm btn-icon"
+                    @click="newEvPoints.splice(i, 1)">✕</button>
+                </div>
+              </template>
+            </div>
+            <button class="btn-ghost btn-sm" style="margin-bottom:12px" @click="newEvPoints.push(0)">+ Lisää sija</button>
             <button class="btn-primary" @click="addEvent">+ Lisää laji</button>
+          </div>
+        </template>
+
+        <!-- SUORITA -->
+        <template v-if="activeTab === 'suorita'">
+          <div v-if="!state.events.length" class="empty">Lisää ensin lajit Lajit-välilehdellä.</div>
+
+          <div v-for="ev in pendingEvents" :key="ev.id" class="event-card">
+            <div class="event-header" @click="openEventId = openEventId === ev.id ? null : ev.id">
+              <span class="event-name">{{ ev.name }}</span>
+              <span class="event-meta">{{ modeLabel(ev) }}{{ ev.unit ? ' · ' + ev.unit : '' }}</span>
+              <span class="event-status status-pending">Kesken</span>
+            </div>
+            <div v-if="openEventId === ev.id" class="event-body">
+              <div v-for="ent in entrantsFor(ev)" :key="ent.id" class="exec-score-row">
+                <span class="exec-score-name">{{ ent.name }}</span>
+                <input type="number" inputmode="decimal" class="score-input exec-score-input"
+                  :value="resultFor(ev.id, ent.id)?.raw_score ?? ''"
+                  placeholder="—"
+                  @blur="saveScore(ev.id, ent.id, ev.mode === 'team' ? 'team' : 'participant', $event.target.value)">
+                <span class="exec-score-unit">{{ ev.unit ?? '' }}</span>
+              </div>
+              <button class="btn-success btn-block" style="margin-top:16px;padding:14px;font-size:1rem;font-weight:700"
+                @click="completeAndAdvance(ev)">Merkitse valmiiksi ✓</button>
+            </div>
+          </div>
+
+          <div v-if="!pendingEvents.length && state.events.length" class="card" style="text-align:center;padding:40px 16px">
+            <div style="font-size:2.5rem;margin-bottom:8px">🏆</div>
+            <div style="font-size:1.2rem;font-weight:700">Kaikki lajit suoritettu!</div>
+          </div>
+
+          <div v-if="completedEvents.length" class="card" style="margin-top:16px">
+            <div class="section-title">Suoritetut</div>
+            <div v-for="ev in completedEvents" :key="ev.id" class="list-item">
+              <span style="color:var(--success);font-weight:700;margin-right:4px">✓</span>
+              <span class="list-item-name">{{ ev.name }}</span>
+            </div>
           </div>
         </template>
 
