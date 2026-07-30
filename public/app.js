@@ -1,4 +1,4 @@
-import { createApp, ref, computed, onMounted, onBeforeUnmount } from '/vendor/vue.js'
+import { createApp, ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from '/vendor/vue.js'
 
 // ── API ──────────────────────────────────────────────────────────────────────
 async function api(method, path, body) {
@@ -18,7 +18,12 @@ const post = (p, b) => api('POST', p, b)
 const put = (p, b) => api('PUT', p, b)
 const del = p => api('DELETE', p)
 
-// ── Main app ─────────────────────────────────────────────────────────────────
+// ── Column definitions ────────────────────────────────────────────────────────
+const COL_LABELS = { team: 'Tiimi', teamPts: 'Tiimipit.', individual: 'Yksilöp.', total: 'Yht.' }
+const SORTABLE_COLS = new Set(['total', 'individual', 'teamPts'])
+const DEFAULT_COL_ORDER = ['team', 'teamPts', 'individual', 'total']
+
+// ── App ──────────────────────────────────────────────────────────────────────
 createApp({
   setup() {
     // ── Toast ──
@@ -41,6 +46,21 @@ createApp({
     const sortCol = ref(null)
     const sortDir = ref('desc')
     const standingsOrder = ref(null)
+    const columnOrder = ref([...DEFAULT_COL_ORDER])
+
+    // ── Spacer height for +/- column alignment ──
+    const standingsCardRef = ref(null)
+    const standingsTheadRef = ref(null)
+    const adjSpacerHeight = ref(88)
+
+    function measureAdjSpacer() {
+      nextTick(() => {
+        if (!standingsCardRef.value || !standingsTheadRef.value) return
+        const cardTop = standingsCardRef.value.getBoundingClientRect().top
+        const theadBottom = standingsTheadRef.value.getBoundingClientRect().bottom
+        adjSpacerHeight.value = theadBottom - cardTop
+      })
+    }
 
     // ── Form refs ──
     const loginUsername = ref('')
@@ -54,21 +74,21 @@ createApp({
     const newEvDir = ref('desc')
     const newEvPoints = ref([3, 2, 1])
 
+    // ── Sync custom columns into columnOrder ──
+    watch(() => state.value?.customColumns, (cols) => {
+      if (!cols) return
+      const customIds = cols.map(c => `col_${c.id}`)
+      const existing = new Set(columnOrder.value)
+      const toAdd = customIds.filter(id => !existing.has(id))
+      if (toAdd.length) columnOrder.value = [...columnOrder.value, ...toAdd]
+      const activeSet = new Set(customIds)
+      columnOrder.value = columnOrder.value.filter(id => !id.startsWith('col_') || activeSet.has(id))
+    }, { deep: true })
+
     // ── Computed ──
     const sortedStandings = computed(() => {
       if (!state.value) return []
       const standings = state.value.standings
-      if (sortCol.value) {
-        const dir = sortDir.value === 'desc' ? 1 : -1
-        const sorted = [...standings].sort((a, b) => {
-          if (sortCol.value === 'total') return dir * (b.total - a.total)
-          if (sortCol.value === 'individual') return dir * (b.individualPoints - a.individualPoints)
-          const td = dir * (b.teamPoints - a.teamPoints)
-          return td !== 0 ? td : b.individualPoints - a.individualPoints
-        })
-        standingsOrder.value = sorted.map(s => s.participantId)
-        return sorted
-      }
       if (standingsOrder.value) {
         const map = new Map(standings.map(s => [s.participantId, s]))
         const ordered = standingsOrder.value.map(id => map.get(id)).filter(Boolean)
@@ -81,6 +101,8 @@ createApp({
       return standings
     })
 
+    watch(sortedStandings, measureAdjSpacer)
+
     const unassignedParticipants = computed(() => {
       if (!state.value) return []
       const assigned = new Set(state.value.teamMembers.map(tm => tm.participant_id))
@@ -91,6 +113,13 @@ createApp({
     const completedEvents = computed(() => (state.value?.events || []).filter(ev => ev.status === 'completed'))
 
     // ── Helpers ──
+    function colLabel(colId) {
+      if (COL_LABELS[colId]) return COL_LABELS[colId]
+      const id = parseInt(colId.slice(4))
+      return state.value?.customColumns?.find(c => c.id === id)?.name ?? colId
+    }
+    function isSortableCol(colId) { return SORTABLE_COLS.has(colId) }
+
     function sortIndicator(col) {
       if (sortCol.value !== col) return '↕'
       return sortDir.value === 'desc' ? '↓' : '↑'
@@ -98,7 +127,21 @@ createApp({
     function sortBy(col) {
       if (sortCol.value === col) sortDir.value = sortDir.value === 'desc' ? 'asc' : 'desc'
       else { sortCol.value = col; sortDir.value = 'desc' }
+      const standings = state.value?.standings
+      if (!standings) return
+      const dir = sortDir.value === 'desc' ? 1 : -1
+      const sorted = [...standings].sort((a, b) => {
+        if (col === 'total') return dir * (b.total - a.total)
+        if (col === 'individual') return dir * (b.individualPoints - a.individualPoints)
+        if (col === 'teamPts') {
+          const td = dir * (b.teamPoints - a.teamPoints)
+          return td !== 0 ? td : b.individualPoints - a.individualPoints
+        }
+        return 0
+      })
+      standingsOrder.value = sorted.map(s => s.participantId)
     }
+
     function teamMembersFor(teamId) {
       if (!state.value) return []
       const ids = new Set(state.value.teamMembers.filter(tm => tm.team_id === teamId).map(tm => tm.participant_id))
@@ -120,6 +163,25 @@ createApp({
     function modeLabel(ev) { return ev.mode === 'team' ? 'Tiimilaji' : 'Yksilölaji' }
     function dirLabel(ev) { return ev.sort_direction === 'asc' ? '↑ pienin voittaa' : '↓ suurin voittaa' }
 
+    function cellValue(colId, s) {
+      if (colId === 'team') return s.teamName ?? '—'
+      if (colId === 'teamPts') return s.teamPoints
+      if (colId === 'individual') return s.individualPoints
+      if (colId === 'total') return s.total
+      return null
+    }
+
+    function switchTab(id) {
+      activeTab.value = id
+      if (id === 'suorita') {
+        const first = state.value?.events.find(ev => ev.status === 'pending')
+        openEventId.value = first?.id ?? null
+      } else {
+        openEventId.value = null
+      }
+      if (id === 'standings') nextTick(measureAdjSpacer)
+    }
+
     // ── API actions ──
     async function loadState() {
       state.value = await get(`/api/competitions/${currentComp.value.id}/state`)
@@ -133,6 +195,7 @@ createApp({
       standingsOrder.value = null
       sortCol.value = null
       sortDir.value = 'desc'
+      columnOrder.value = [...DEFAULT_COL_ORDER]
     }
 
     async function doLogin() {
@@ -221,25 +284,6 @@ createApp({
       } catch(e) { toast(e.message) }
     }
 
-    async function completeAndAdvance(ev) {
-      try {
-        await put(`/api/competitions/${currentComp.value.id}/events/${ev.id}/status`, { status: 'completed' })
-        await loadState()
-        const next = state.value.events.find(e => e.status === 'pending')
-        openEventId.value = next?.id ?? null
-      } catch(e) { toast(e.message) }
-    }
-
-    function switchTab(id) {
-      activeTab.value = id
-      if (id === 'suorita') {
-        const first = state.value?.events.find(ev => ev.status === 'pending')
-        openEventId.value = first?.id ?? null
-      } else {
-        openEventId.value = null
-      }
-    }
-
     async function deleteEvent(eid) {
       if (!confirm('Poistetaanko laji?')) return
       try {
@@ -254,6 +298,15 @@ createApp({
         await put(`/api/competitions/${currentComp.value.id}/events/${ev.id}/status`,
           { status: ev.status === 'completed' ? 'pending' : 'completed' })
         await loadState()
+      } catch(e) { toast(e.message) }
+    }
+
+    async function completeAndAdvance(ev) {
+      try {
+        await put(`/api/competitions/${currentComp.value.id}/events/${ev.id}/status`, { status: 'completed' })
+        await loadState()
+        const next = state.value.events.find(e => e.status === 'pending')
+        openEventId.value = next?.id ?? null
       } catch(e) { toast(e.message) }
     }
 
@@ -312,42 +365,97 @@ createApp({
       } catch(e) { toast(e.message) }
     }
 
-    // ── Drag & drop ──
-    let dragGhost = null, dragPid = null, dragSrc = null
+    // ── Participant chip drag & drop ──────────────────────────────────────────
+    let chipGhost = null, dragPid = null, chipSrc = null
 
-    function onPointerDown(e) {
-      const chip = e.target.closest('.draggable')
-      if (!chip) return
+    function onChipPointerDown(e, chip) {
       e.preventDefault()
-      dragPid = chip.dataset.pid; dragSrc = chip
+      dragPid = chip.dataset.pid; chipSrc = chip
       const rect = chip.getBoundingClientRect()
-      dragGhost = chip.cloneNode(true)
-      dragGhost.classList.add('drag-ghost')
-      Object.assign(dragGhost.style, {
+      chipGhost = chip.cloneNode(true)
+      chipGhost.classList.add('drag-ghost')
+      Object.assign(chipGhost.style, {
         position: 'fixed', left: rect.left + 'px', top: rect.top + 'px',
         width: rect.width + 'px', pointerEvents: 'none', zIndex: '1000',
       })
-      document.body.appendChild(dragGhost)
+      document.body.appendChild(chipGhost)
       chip.style.opacity = '0.3'
       chip.setPointerCapture(e.pointerId)
     }
 
+    // ── Column drag & drop ────────────────────────────────────────────────────
+    let colGhost = null, dragColId = null, colSrc = null, colDropTarget = null
+
+    function onColPointerDown(e, th) {
+      e.preventDefault()
+      dragColId = th.dataset.colId; colSrc = th
+      const rect = th.getBoundingClientRect()
+      colGhost = document.createElement('div')
+      colGhost.className = 'col-drag-ghost'
+      colGhost.textContent = th.textContent.trim().replace(/[↕↓↑]/, '').trim()
+      Object.assign(colGhost.style, {
+        position: 'fixed', left: rect.left + 'px', top: rect.top + 'px',
+        width: rect.width + 'px', pointerEvents: 'none', zIndex: '1000',
+      })
+      document.body.appendChild(colGhost)
+      th.style.opacity = '0.3'
+      th.setPointerCapture(e.pointerId)
+    }
+
+    // ── Unified pointer handlers ──────────────────────────────────────────────
+    function onPointerDown(e) {
+      const chip = e.target.closest('.draggable')
+      if (chip) { onChipPointerDown(e, chip); return }
+      const col = e.target.closest('.col-draggable')
+      if (col) { onColPointerDown(e, col); return }
+    }
+
     function onPointerMove(e) {
-      if (!dragGhost) return
-      dragGhost.style.left = (e.clientX - 16) + 'px'
-      dragGhost.style.top = (e.clientY - 16) + 'px'
-      document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('drag-over'))
-      document.elementFromPoint(e.clientX, e.clientY)?.closest('.drop-zone')?.classList.add('drag-over')
+      if (chipGhost) {
+        chipGhost.style.left = (e.clientX - 16) + 'px'
+        chipGhost.style.top = (e.clientY - 16) + 'px'
+        document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('drag-over'))
+        document.elementFromPoint(e.clientX, e.clientY)?.closest('.drop-zone')?.classList.add('drag-over')
+      }
+      if (colGhost) {
+        colGhost.style.left = (e.clientX - colGhost.offsetWidth / 2) + 'px'
+        colGhost.style.top = (e.clientY - 10) + 'px'
+        document.querySelectorAll('.col-draggable').forEach(th => th.classList.remove('col-drag-over'))
+        const under = document.elementFromPoint(e.clientX, e.clientY)?.closest('.col-draggable')
+        if (under && under.dataset.colId !== dragColId) {
+          under.classList.add('col-drag-over')
+          colDropTarget = under.dataset.colId
+        } else {
+          colDropTarget = null
+        }
+      }
     }
 
     async function onPointerUp(e) {
-      if (!dragGhost) return
-      dragGhost.remove(); dragGhost = null
-      if (dragSrc) { dragSrc.style.opacity = ''; dragSrc = null }
-      document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('drag-over'))
-      const zone = document.elementFromPoint(e.clientX, e.clientY)?.closest('.drop-zone')
-      if (zone && dragPid) await moveMember(dragPid, zone.dataset.teamId)
-      dragPid = null
+      if (chipGhost) {
+        chipGhost.remove(); chipGhost = null
+        if (chipSrc) { chipSrc.style.opacity = ''; chipSrc = null }
+        document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('drag-over'))
+        const zone = document.elementFromPoint(e.clientX, e.clientY)?.closest('.drop-zone')
+        if (zone && dragPid) await moveMember(dragPid, zone.dataset.teamId)
+        dragPid = null
+      }
+      if (colGhost) {
+        colGhost.remove(); colGhost = null
+        if (colSrc) { colSrc.style.opacity = ''; colSrc = null }
+        document.querySelectorAll('.col-draggable').forEach(th => th.classList.remove('col-drag-over'))
+        if (colDropTarget && colDropTarget !== dragColId) {
+          const from = columnOrder.value.indexOf(dragColId)
+          const to = columnOrder.value.indexOf(colDropTarget)
+          if (from !== -1 && to !== -1) {
+            const order = [...columnOrder.value]
+            order.splice(from, 1)
+            order.splice(to, 0, dragColId)
+            columnOrder.value = order
+          }
+        }
+        dragColId = null; colDropTarget = null
+      }
     }
 
     onMounted(async () => {
@@ -367,18 +475,18 @@ createApp({
     return {
       toastMsg, toastVisible,
       currentUser, competitions, currentComp, state, activeTab, openEventId,
-      sortedStandings, unassignedParticipants,
-      sortCol, sortDir, sortBy, sortIndicator,
+      sortedStandings, unassignedParticipants, pendingEvents, completedEvents,
+      sortCol, sortDir, columnOrder, adjSpacerHeight,
+      standingsCardRef, standingsTheadRef,
       loginUsername, newCompName, newParticipantName, newTeamName, newColName,
       newEvName, newEvUnit, newEvMode, newEvDir, newEvPoints,
-      pendingEvents, completedEvents,
-      teamMembersFor, customValueFor, eventPointsFor, resultFor, entrantsFor,
-      modeLabel, dirLabel,
+      colLabel, isSortableCol, cellValue,
+      sortBy, sortIndicator, teamMembersFor, customValueFor,
+      eventPointsFor, resultFor, entrantsFor, modeLabel, dirLabel,
       openComp, doLogin, doLogout, createComp, switchTab,
       addParticipant, deleteParticipant,
       addTeam, deleteTeam,
-      addEvent, deleteEvent, toggleStatus, saveScore, deleteResult, savePoints,
-      completeAndAdvance,
+      addEvent, deleteEvent, toggleStatus, completeAndAdvance, saveScore, deleteResult, savePoints,
       adjust, addCustomColumn, deleteCustomColumn, saveCustomValue,
     }
   },
@@ -446,51 +554,58 @@ createApp({
             <button class="btn-success btn-block" style="padding:16px;font-size:1.05rem;font-weight:700"
               @click="switchTab('suorita')">Aloita kisat →</button>
           </div>
-          <div class="card">
-            <div class="card-title">Kokonaispisteet</div>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Nimi</th>
-                    <th class="sortable" @click="sortBy('total')">Yht. {{ sortIndicator('total') }}</th>
-                    <th class="sortable" @click="sortBy('individual')">Yksilöp. {{ sortIndicator('individual') }}</th>
-                    <th>Tiimi</th>
-                    <th class="sortable" @click="sortBy('team')">Tiimipit. {{ sortIndicator('team') }}</th>
-                    <th v-for="col in state.customColumns" :key="col.id">{{ col.name }}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-if="!sortedStandings.length">
-                    <td :colspan="7 + state.customColumns.length" class="empty">Ei osallistujia</td>
-                  </tr>
-                  <tr v-for="(s, i) in sortedStandings" :key="s.participantId">
-                    <td class="rank-col">{{ i + 1 }}</td>
-                    <td>{{ s.name }}</td>
-                    <td class="points-col total-col">{{ s.total }}</td>
-                    <td class="points-col">{{ s.individualPoints }}</td>
-                    <td>{{ s.teamName ?? '—' }}</td>
-                    <td class="points-col">{{ s.teamPoints }}</td>
-                    <td v-for="col in state.customColumns" :key="col.id">
-                      <input class="score-input" style="width:80px"
-                        :value="customValueFor(col.id, s.participantId)"
-                        placeholder="—"
-                        @blur="saveCustomValue(col.id, s.participantId, $event.target.value)">
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+
+          <div class="standings-outer">
+            <div class="card standings-card" ref="standingsCardRef">
+              <div class="card-title">Kokonaispisteet</div>
+              <div class="table-wrap">
+                <table>
+                  <thead ref="standingsTheadRef">
+                    <tr>
+                      <th style="width:2rem">#</th>
+                      <th>Nimi</th>
+                      <th v-for="colId in columnOrder" :key="colId"
+                        class="col-draggable"
+                        :class="{ sortable: isSortableCol(colId), 'col-drag-over': false }"
+                        :data-col-id="colId"
+                        @click="isSortableCol(colId) ? sortBy(colId) : null">
+                        {{ colLabel(colId) }}<template v-if="isSortableCol(colId)"> {{ sortIndicator(colId) }}</template>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="!sortedStandings.length">
+                      <td :colspan="2 + columnOrder.length" class="empty">Ei osallistujia</td>
+                    </tr>
+                    <tr v-for="(s, i) in sortedStandings" :key="s.participantId">
+                      <td class="rank-col">{{ i + 1 }}</td>
+                      <td>{{ s.name }}</td>
+                      <td v-for="colId in columnOrder" :key="colId"
+                        :class="{ 'points-col': ['teamPts','individual'].includes(colId), 'total-col': colId === 'total' }">
+                        <template v-if="colId.startsWith('col_')">
+                          <input class="score-input" style="width:80px"
+                            :value="customValueFor(parseInt(colId.slice(4)), s.participantId)"
+                            placeholder="—"
+                            @blur="saveCustomValue(parseInt(colId.slice(4)), s.participantId, $event.target.value)">
+                        </template>
+                        <template v-else>{{ cellValue(colId, s) }}</template>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- +/- outside the card -->
+            <div class="standings-adj-col" v-if="sortedStandings.length">
+              <div :style="{ height: adjSpacerHeight + 'px' }"></div>
+              <div v-for="s in sortedStandings" :key="s.participantId" class="standings-adj-row">
+                <button class="adj-out-btn" @click="adjust(s.participantId, 1)">+</button>
+                <button class="adj-out-btn" @click="adjust(s.participantId, -1)">−</button>
+              </div>
             </div>
           </div>
-          <div v-if="sortedStandings.length" class="card">
-            <div v-for="s in sortedStandings" :key="s.participantId" class="adj-row">
-              <span class="adj-name">{{ s.name }}</span>
-              <button class="btn-ghost btn-icon btn-sm" @click="adjust(s.participantId, -1)">−</button>
-              <span class="adj-val">{{ (s.adjustment >= 0 ? '+' : '') + s.adjustment }}</span>
-              <button class="btn-ghost btn-icon btn-sm" @click="adjust(s.participantId, 1)">+</button>
-            </div>
-          </div>
+
           <div class="card">
             <div class="section-title">Lisäsarakkeet</div>
             <div class="input-row">
@@ -500,6 +615,44 @@ createApp({
             <div v-for="col in state.customColumns" :key="col.id" class="list-item">
               <span class="list-item-name">{{ col.name }}</span>
               <button class="btn-danger btn-sm" @click="deleteCustomColumn(col.id)">Poista</button>
+            </div>
+          </div>
+        </template>
+
+        <!-- SUORITA -->
+        <template v-if="activeTab === 'suorita'">
+          <div v-if="!state.events.length" class="empty">Lisää ensin lajit Lajit-välilehdellä.</div>
+
+          <div v-for="ev in pendingEvents" :key="ev.id" class="event-card">
+            <div class="event-header" @click="openEventId = openEventId === ev.id ? null : ev.id">
+              <span class="event-name">{{ ev.name }}</span>
+              <span class="event-meta">{{ modeLabel(ev) }}{{ ev.unit ? ' · ' + ev.unit : '' }}</span>
+              <span class="event-status status-pending">Kesken</span>
+            </div>
+            <div v-if="openEventId === ev.id" class="event-body">
+              <div v-for="ent in entrantsFor(ev)" :key="ent.id" class="exec-score-row">
+                <span class="exec-score-name">{{ ent.name }}</span>
+                <input type="number" inputmode="decimal" class="score-input exec-score-input"
+                  :value="resultFor(ev.id, ent.id)?.raw_score ?? ''"
+                  placeholder="—"
+                  @blur="saveScore(ev.id, ent.id, ev.mode === 'team' ? 'team' : 'participant', $event.target.value)">
+                <span class="exec-score-unit">{{ ev.unit ?? '' }}</span>
+              </div>
+              <button class="btn-success btn-block" style="margin-top:16px;padding:14px;font-size:1rem;font-weight:700"
+                @click="completeAndAdvance(ev)">Merkitse valmiiksi ✓</button>
+            </div>
+          </div>
+
+          <div v-if="!pendingEvents.length && state.events.length" class="card" style="text-align:center;padding:40px 16px">
+            <div style="font-size:2.5rem;margin-bottom:8px">🏆</div>
+            <div style="font-size:1.2rem;font-weight:700">Kaikki lajit suoritettu!</div>
+          </div>
+
+          <div v-if="completedEvents.length" class="card" style="margin-top:16px">
+            <div class="section-title">Suoritetut</div>
+            <div v-for="ev in completedEvents" :key="ev.id" class="list-item">
+              <span style="color:var(--success);font-weight:700;margin-right:4px">✓</span>
+              <span class="list-item-name">{{ ev.name }}</span>
             </div>
           </div>
         </template>
@@ -528,8 +681,7 @@ createApp({
 
               <template v-if="ev.status === 'completed'">
                 <div class="section-title" style="margin-top:16px">
-                  Tulokset
-                  <span class="chip">{{ dirLabel(ev) }}</span>
+                  Tulokset <span class="chip">{{ dirLabel(ev) }}</span>
                 </div>
                 <div v-for="ent in entrantsFor(ev)" :key="ent.id" class="score-row">
                   <span class="score-name">{{ ent.name }}</span>
@@ -580,44 +732,6 @@ createApp({
             </div>
             <button class="btn-ghost btn-sm" style="margin-bottom:12px" @click="newEvPoints.push(0)">+ Lisää sija</button>
             <button class="btn-primary" @click="addEvent">+ Lisää laji</button>
-          </div>
-        </template>
-
-        <!-- SUORITA -->
-        <template v-if="activeTab === 'suorita'">
-          <div v-if="!state.events.length" class="empty">Lisää ensin lajit Lajit-välilehdellä.</div>
-
-          <div v-for="ev in pendingEvents" :key="ev.id" class="event-card">
-            <div class="event-header" @click="openEventId = openEventId === ev.id ? null : ev.id">
-              <span class="event-name">{{ ev.name }}</span>
-              <span class="event-meta">{{ modeLabel(ev) }}{{ ev.unit ? ' · ' + ev.unit : '' }}</span>
-              <span class="event-status status-pending">Kesken</span>
-            </div>
-            <div v-if="openEventId === ev.id" class="event-body">
-              <div v-for="ent in entrantsFor(ev)" :key="ent.id" class="exec-score-row">
-                <span class="exec-score-name">{{ ent.name }}</span>
-                <input type="number" inputmode="decimal" class="score-input exec-score-input"
-                  :value="resultFor(ev.id, ent.id)?.raw_score ?? ''"
-                  placeholder="—"
-                  @blur="saveScore(ev.id, ent.id, ev.mode === 'team' ? 'team' : 'participant', $event.target.value)">
-                <span class="exec-score-unit">{{ ev.unit ?? '' }}</span>
-              </div>
-              <button class="btn-success btn-block" style="margin-top:16px;padding:14px;font-size:1rem;font-weight:700"
-                @click="completeAndAdvance(ev)">Merkitse valmiiksi ✓</button>
-            </div>
-          </div>
-
-          <div v-if="!pendingEvents.length && state.events.length" class="card" style="text-align:center;padding:40px 16px">
-            <div style="font-size:2.5rem;margin-bottom:8px">🏆</div>
-            <div style="font-size:1.2rem;font-weight:700">Kaikki lajit suoritettu!</div>
-          </div>
-
-          <div v-if="completedEvents.length" class="card" style="margin-top:16px">
-            <div class="section-title">Suoritetut</div>
-            <div v-for="ev in completedEvents" :key="ev.id" class="list-item">
-              <span style="color:var(--success);font-weight:700;margin-right:4px">✓</span>
-              <span class="list-item-name">{{ ev.name }}</span>
-            </div>
           </div>
         </template>
 

@@ -153,11 +153,13 @@ td.total-col { font-size: 1.2rem; font-weight: 700; }
 .exec-score-input { width: 130px; font-size: 1.1rem; padding: 10px 12px; }
 .exec-score-unit { min-width: 32px; color: var(--text-muted); font-size: 14px; }
 
-/* ---------- Adjust buttons ---------- */
-.adj-row { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-bottom: 1px solid var(--border); }
-.adj-row:last-child { border-bottom: none; }
-.adj-name { flex: 1; font-size: 15px; }
-.adj-val { min-width: 36px; text-align: center; font-weight: 600; font-size: 15px; }
+/* ---------- Standings +/- outside card ---------- */
+.standings-outer { display: flex; gap: 8px; align-items: flex-start; }
+.standings-card { flex: 1; min-width: 0; }
+.standings-adj-col { display: flex; flex-direction: column; flex-shrink: 0; }
+.standings-adj-row { height: 49px; display: flex; align-items: center; gap: 2px; }
+.adj-out-btn { font-size: 1.6rem; line-height: 1; padding: 4px 8px; background: none; border: none; cursor: pointer; color: var(--text); font-weight: 300; min-width: 36px; text-align: center; border-radius: 6px; }
+.adj-out-btn:hover { background: var(--bg); }
 
 /* ---------- Login ---------- */
 .login-wrap { max-width: 360px; margin: 80px auto; }
@@ -226,9 +228,18 @@ td.total-col { font-size: 1.2rem; font-weight: 700; }
   box-shadow: 0 4px 12px rgba(0,0,0,.2);
 }
 
-/* ---------- Sortable headers ---------- */
+/* ---------- Sortable + draggable column headers ---------- */
 th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { color: var(--text); }
+th.col-draggable { cursor: grab; user-select: none; }
+th.col-drag-over { background: #eff6ff; color: var(--primary); }
+.col-drag-ghost {
+  background: var(--primary); color: #fff;
+  padding: 8px 10px; border-radius: 6px;
+  font-size: 13px; font-weight: 600;
+  box-shadow: 0 4px 12px rgba(0,0,0,.2);
+  white-space: nowrap; z-index: 1000;
+}
 
 /* ---------- Empty state ---------- */
 .empty { color: var(--text-muted); font-size: 14px; text-align: center; padding: 20px 0; }
