@@ -1,0 +1,16 @@
+{
+  "name": "slympialaskuri",
+  "version": "1.0.0",
+  "description": "Mökkiolympialaiset-pistelaskuri",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "connect-sqlite3": "^0.9.15",
+    "express": "^4.19.2",
+    "express-session": "^1.18.0"
+  }
+}
