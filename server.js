@@ -1,18 +1,42 @@
 const express = require('express');
 const session = require('express-session');
-const SQLiteStore = require('connect-sqlite3')(session);
 const path = require('path');
 const db = require('./db');
 const { login, logout, requireAuth } = require('./auth');
 
 const app = express();
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const PORT = process.env.PORT || 3000;
+
+// Session store backed by better-sqlite3
+class SqliteStore extends session.Store {
+  constructor() {
+    super();
+    db.exec(`CREATE TABLE IF NOT EXISTS sessions (
+      sid TEXT PRIMARY KEY,
+      expired INTEGER NOT NULL,
+      sess TEXT NOT NULL
+    )`);
+    this.get_ = db.prepare('SELECT sess FROM sessions WHERE sid = ? AND expired > ?');
+    this.set_ = db.prepare('INSERT INTO sessions (sid, expired, sess) VALUES (?, ?, ?) ON CONFLICT(sid) DO UPDATE SET expired = excluded.expired, sess = excluded.sess');
+    this.destroy_ = db.prepare('DELETE FROM sessions WHERE sid = ?');
+    setInterval(() => db.prepare('DELETE FROM sessions WHERE expired < ?').run(Date.now()), 60000);
+  }
+  get(sid, cb) {
+    const row = this.get_.get(sid, Date.now());
+    cb(null, row ? JSON.parse(row.sess) : null);
+  }
+  set(sid, sess, cb) {
+    const ttl = sess.cookie?.maxAge ? Date.now() + sess.cookie.maxAge : Date.now() + 86400000;
+    this.set_.run(sid, ttl, JSON.stringify(sess));
+    cb(null);
+  }
+  destroy(sid, cb) { this.destroy_.run(sid); cb(null); }
+}
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(session({
-  store: new SQLiteStore({ db: 'sessions.db', dir: DATA_DIR }),
+  store: new SqliteStore(),
   secret: process.env.SESSION_SECRET || 'slympia-secret',
   resave: false,
   saveUninitialized: false,
