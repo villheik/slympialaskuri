@@ -243,7 +243,7 @@ function renderEvents() {
       const res = evResults.find(r => r.entrant_id === ent.id);
       return `<div class="score-row">
         <span class="score-name">${esc(ent.name)}</span>
-        <input type="number" inputmode="decimal" class="score-input score-entry" data-eid="${ev.id}" data-entrant-id="${ent.id}" data-entrant-type="${ev.mode === 'team' ? 'team' : 'participant'}" value="${res ? res.raw_score : ''" placeholder="—">
+        <input type="number" inputmode="decimal" class="score-input score-entry" data-eid="${ev.id}" data-entrant-id="${ent.id}" data-entrant-type="${ev.mode === 'team' ? 'team' : 'participant'}" value="${res ? res.raw_score : ''}" placeholder="—">
         ${res ? `<button class="btn-ghost btn-sm del-result-btn" data-eid="${ev.id}" data-type="${ev.mode === 'team' ? 'team' : 'participant'}" data-eid2="${ent.id}">✕</button>` : '<span style="width:42px"></span>'}
       </div>`;
     }).join('');
