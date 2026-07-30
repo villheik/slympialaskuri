@@ -375,36 +375,39 @@ function renderParticipants() {
 // ---------- Teams ----------
 function renderTeams() {
   const { teams, participants, teamMembers } = state;
+  const assignedIds = new Set(teamMembers.map(tm => tm.participant_id));
+  const unassigned = participants.filter(p => !assignedIds.has(p.id));
 
-  const teamCards = teams.map(t => {
-    const memberIds = teamMembers.filter(tm => tm.team_id === t.id).map(tm => tm.participant_id);
-    const members = participants.filter(p => memberIds.includes(p.id));
-    const nonMembers = participants.filter(p => !memberIds.includes(p.id));
+  const chip = (p) => `<div class="participant-chip draggable" data-pid="${p.id}" touch-action="none">${esc(p.name)}</div>`;
 
-    const memberItems = members.map(p => `
-      <div class="list-item">
-        <span class="list-item-name">${esc(p.name)}</span>
-        <button class="btn-ghost btn-sm remove-member-btn" data-tid="${t.id}" data-pid="${p.id}">Poista</button>
-      </div>`).join('') || '<div class="empty">Tiimi tyhjä.</div>';
+  const unassignedHtml = `
+    <div class="card">
+      <div class="card-title">Ei tiimissä</div>
+      <div class="drop-zone chip-zone" data-team-id="unassigned">
+        ${unassigned.map(chip).join('') || '<span class="empty" style="font-size:13px">Kaikki jaettu</span>'}
+      </div>
+    </div>`;
 
-    const addOptions = nonMembers.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
-
-    return `
-      <div class="card">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-          <span class="card-title" style="margin-bottom:0;flex:1">${esc(t.name)}</span>
-          <button class="btn-danger btn-sm del-team-btn" data-tid="${t.id}">Poista tiimi</button>
-        </div>
-        ${memberItems}
-        ${nonMembers.length ? `
-          <div class="input-row" style="margin-top:10px">
-            <select class="add-member-select" data-tid="${t.id}">${addOptions}</select>
-            <button class="btn-ghost btn-sm add-member-btn" data-tid="${t.id}">+ Lisää</button>
-          </div>` : ''}
-      </div>`;
-  }).join('') || '<div class="empty">Ei tiimejä.</div>';
+  const teamCards = teams.length ? `
+    <div class="teams-grid">
+      ${teams.map(t => {
+        const memberIds = teamMembers.filter(tm => tm.team_id === t.id).map(tm => tm.participant_id);
+        const members = participants.filter(p => memberIds.includes(p.id));
+        return `
+          <div class="team-card drop-zone" data-team-id="${t.id}">
+            <div class="team-card-header">
+              <span>${esc(t.name)}</span>
+              <button class="btn-danger btn-sm del-team-btn" data-tid="${t.id}">✕</button>
+            </div>
+            <div class="chip-zone">
+              ${members.map(chip).join('') || '<span class="empty" style="font-size:13px">Tyhjä</span>'}
+            </div>
+          </div>`;
+      }).join('')}
+    </div>` : '<div class="empty">Luo ensin tiimit.</div>';
 
   return `
+    ${unassignedHtml}
     ${teamCards}
     <div class="card">
       <div class="input-row">
@@ -413,6 +416,66 @@ function renderTeams() {
       </div>
     </div>`;
 }
+
+// ---------- Drag & drop ----------
+async function handleDrop(pid, targetTeamId) {
+  const cid = currentComp?.id;
+  if (!cid) return;
+  pid = Number(pid);
+  const current = state.teamMembers.find(tm => tm.participant_id === pid);
+  if (current) {
+    await del(`/api/competitions/${cid}/teams/${current.team_id}/members/${pid}`);
+  }
+  if (targetTeamId !== 'unassigned') {
+    await post(`/api/competitions/${cid}/teams/${targetTeamId}/members`, { participantId: pid });
+  }
+  state = await get(`/api/competitions/${cid}/state`);
+  render();
+}
+
+(function initDragDrop() {
+  let ghost = null, dragPid = null, srcEl = null;
+
+  document.addEventListener('pointerdown', (e) => {
+    const chip = e.target.closest('.draggable');
+    if (!chip) return;
+    e.preventDefault();
+    dragPid = chip.dataset.pid;
+    srcEl = chip;
+    const rect = chip.getBoundingClientRect();
+    ghost = chip.cloneNode(true);
+    ghost.classList.add('drag-ghost');
+    ghost.style.left = rect.left + 'px';
+    ghost.style.top = rect.top + 'px';
+    ghost.style.width = rect.width + 'px';
+    document.body.appendChild(ghost);
+    chip.style.opacity = '0.3';
+    chip.setPointerCapture(e.pointerId);
+  }, { passive: false });
+
+  document.addEventListener('pointermove', (e) => {
+    if (!ghost) return;
+    ghost.style.left = (e.clientX - 16) + 'px';
+    ghost.style.top = (e.clientY - 16) + 'px';
+    ghost.style.pointerEvents = 'none';
+    document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('drag-over'));
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    under?.closest('.drop-zone')?.classList.add('drag-over');
+  });
+
+  document.addEventListener('pointerup', async (e) => {
+    if (!ghost) return;
+    ghost.remove(); ghost = null;
+    if (srcEl) { srcEl.style.opacity = ''; srcEl = null; }
+    document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('drag-over'));
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    const zone = under?.closest('.drop-zone');
+    if (zone && dragPid) {
+      try { await handleDrop(dragPid, zone.dataset.teamId); } catch(err) { toast(err.message); }
+    }
+    dragPid = null;
+  });
+})();
 
 // ---------- Event handlers ----------
 document.addEventListener('click', async (e) => {
@@ -506,23 +569,6 @@ document.addEventListener('click', async (e) => {
     if (e.target.classList.contains('del-team-btn')) {
       if (!confirm('Poistetaanko tiimi?')) return;
       await del(`/api/competitions/${cid}/teams/${e.target.dataset.tid}`);
-      state = await get(`/api/competitions/${cid}/state`);
-      render(); return;
-    }
-
-    // Add member to team
-    if (e.target.classList.contains('add-member-btn')) {
-      const tid = e.target.dataset.tid;
-      const select = document.querySelector(`.add-member-select[data-tid="${tid}"]`);
-      if (!select?.value) return;
-      await post(`/api/competitions/${cid}/teams/${tid}/members`, { participantId: Number(select.value) });
-      state = await get(`/api/competitions/${cid}/state`);
-      render(); return;
-    }
-
-    // Remove member from team
-    if (e.target.classList.contains('remove-member-btn')) {
-      await del(`/api/competitions/${cid}/teams/${e.target.dataset.tid}/members/${e.target.dataset.pid}`);
       state = await get(`/api/competitions/${cid}/state`);
       render(); return;
     }
