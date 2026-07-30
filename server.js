@@ -35,6 +35,9 @@ class SqliteStore extends session.Store {
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+app.get('/vendor/vue.js', (req, res) => {
+  res.sendFile(path.join(__dirname, 'node_modules/vue/dist/vue.esm-browser.prod.js'));
+});
 app.use(session({
   store: new SqliteStore(),
   secret: process.env.SESSION_SECRET || 'slympia-secret',
