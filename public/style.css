@@ -121,6 +121,7 @@ tr:last-child td { border-bottom: none; }
 .rank-col { font-weight: 700; width: 2rem; text-align: center; }
 .points-col { font-weight: 600; text-align: right; }
 td.points-col { font-size: 1.05rem; }
+td.total-col { font-size: 1.2rem; font-weight: 700; }
 
 /* ---------- Event card ---------- */
 .event-card { border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 8px; background: var(--surface); }
@@ -146,8 +147,10 @@ td.points-col { font-size: 1.05rem; }
 .score-result { font-size: 13px; color: var(--text-muted); min-width: 60px; text-align: right; }
 
 /* ---------- Adjust buttons ---------- */
-.adj-row { display: flex; align-items: center; gap: 6px; }
-.adj-row span { min-width: 36px; text-align: center; font-weight: 600; }
+.adj-row { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.adj-row:last-child { border-bottom: none; }
+.adj-name { flex: 1; font-size: 15px; }
+.adj-val { min-width: 36px; text-align: center; font-weight: 600; font-size: 15px; }
 
 /* ---------- Login ---------- */
 .login-wrap { max-width: 360px; margin: 80px auto; }

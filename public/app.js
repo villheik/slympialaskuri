@@ -60,6 +60,7 @@ createApp({
       if (sortCol.value) {
         const dir = sortDir.value === 'desc' ? 1 : -1
         const sorted = [...standings].sort((a, b) => {
+          if (sortCol.value === 'total') return dir * (b.total - a.total)
           if (sortCol.value === 'individual') return dir * (b.individualPoints - a.individualPoints)
           const td = dir * (b.teamPoints - a.teamPoints)
           return td !== 0 ? td : b.individualPoints - a.individualPoints
@@ -417,30 +418,24 @@ createApp({
                   <tr>
                     <th>#</th>
                     <th>Nimi</th>
+                    <th class="sortable" @click="sortBy('total')">Yht. {{ sortIndicator('total') }}</th>
                     <th class="sortable" @click="sortBy('individual')">Yksilöp. {{ sortIndicator('individual') }}</th>
                     <th>Tiimi</th>
                     <th class="sortable" @click="sortBy('team')">Tiimipit. {{ sortIndicator('team') }}</th>
-                    <th>Säätö</th>
                     <th v-for="col in state.customColumns" :key="col.id">{{ col.name }}</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-if="!sortedStandings.length">
-                    <td :colspan="6 + state.customColumns.length" class="empty">Ei osallistujia</td>
+                    <td :colspan="7 + state.customColumns.length" class="empty">Ei osallistujia</td>
                   </tr>
                   <tr v-for="(s, i) in sortedStandings" :key="s.participantId">
                     <td class="rank-col">{{ i + 1 }}</td>
                     <td>{{ s.name }}</td>
+                    <td class="points-col total-col">{{ s.total }}</td>
                     <td class="points-col">{{ s.individualPoints }}</td>
                     <td>{{ s.teamName ?? '—' }}</td>
                     <td class="points-col">{{ s.teamPoints }}</td>
-                    <td>
-                      <div class="adj-row">
-                        <button class="btn-ghost btn-icon btn-sm" @click="adjust(s.participantId, -1)">−</button>
-                        <span>{{ (s.adjustment >= 0 ? '+' : '') + s.adjustment }}</span>
-                        <button class="btn-ghost btn-icon btn-sm" @click="adjust(s.participantId, 1)">+</button>
-                      </div>
-                    </td>
                     <td v-for="col in state.customColumns" :key="col.id">
                       <input class="score-input" style="width:80px"
                         :value="customValueFor(col.id, s.participantId)"
@@ -450,6 +445,14 @@ createApp({
                   </tr>
                 </tbody>
               </table>
+            </div>
+          </div>
+          <div v-if="sortedStandings.length" class="card">
+            <div v-for="s in sortedStandings" :key="s.participantId" class="adj-row">
+              <span class="adj-name">{{ s.name }}</span>
+              <button class="btn-ghost btn-icon btn-sm" @click="adjust(s.participantId, -1)">−</button>
+              <span class="adj-val">{{ (s.adjustment >= 0 ? '+' : '') + s.adjustment }}</span>
+              <button class="btn-ghost btn-icon btn-sm" @click="adjust(s.participantId, 1)">+</button>
             </div>
           </div>
           <div class="card">
