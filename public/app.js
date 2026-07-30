@@ -619,7 +619,6 @@ createApp({
                       <th style="width:2rem">#</th>
                       <th style="min-width:70px">Nimi</th>
                       <th v-for="colId in visibleColumnOrder" :key="colId"
-                        class="col-draggable"
                         :class="{ sortable: isSortableCol(colId) }"
                         :style="colHeaderStyle(colId)"
                         :data-col-id="colId"
