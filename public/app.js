@@ -632,32 +632,27 @@ createApp({
                     <tr v-if="!sortedStandings.length">
                       <td :colspan="2 + visibleColumnOrder.length" class="empty">Ei osallistujia</td>
                     </tr>
-                    <template v-for="(s, i) in sortedStandings" :key="s.participantId">
-                      <tr>
-                        <td class="rank-col">{{ i + 1 }}</td>
-                        <td class="standings-name-link" @click="openStandingId = openStandingId === s.participantId ? null : s.participantId">{{ s.name }}</td>
-                        <td v-for="colId in visibleColumnOrder" :key="colId"
-                          :class="{ 'points-col': ['teamPts','individual'].includes(colId), 'total-col': colId === 'total' }">
-                          {{ cellValue(colId, s) }}
-                        </td>
-                      </tr>
-                      <tr v-if="openStandingId === s.participantId">
-                        <td :colspan="2 + visibleColumnOrder.length" style="padding:0">
-                          <div class="standing-detail">
-                            <div v-if="!state.customColumns.length" class="empty" style="padding:8px 0">Ei lisätietoja.</div>
-                            <div v-for="col in state.customColumns" :key="col.id" class="standing-detail-row">
-                              <span class="standing-detail-label">{{ col.name }}</span>
-                              <input class="score-input" style="width:90px"
-                                :value="customValueFor(col.id, s.participantId)"
-                                placeholder="—"
-                                @blur="saveCustomValue(col.id, s.participantId, $event.target.value)">
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    </template>
+                    <tr v-for="(s, i) in sortedStandings" :key="s.participantId"
+                      :class="{ 'standings-row-selected': openStandingId === s.participantId }">
+                      <td class="rank-col">{{ i + 1 }}</td>
+                      <td class="standings-name-link" @click="openStandingId = openStandingId === s.participantId ? null : s.participantId">{{ s.name }}</td>
+                      <td v-for="colId in visibleColumnOrder" :key="colId"
+                        :class="{ 'points-col': ['teamPts','individual'].includes(colId), 'total-col': colId === 'total' }">
+                        {{ cellValue(colId, s) }}
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
+              </div>
+              <div v-if="openStandingId && state.customColumns.length" class="standing-detail-outer">
+                <div class="standing-detail-name">{{ sortedStandings.find(s => s.participantId === openStandingId)?.name }}</div>
+                <div v-for="col in state.customColumns" :key="col.id" class="standing-detail-row">
+                  <span class="standing-detail-label">{{ col.name }}</span>
+                  <input class="standing-detail-input"
+                    :value="customValueFor(col.id, openStandingId)"
+                    placeholder="—"
+                    @blur="saveCustomValue(col.id, openStandingId, $event.target.value)">
+                </div>
               </div>
             </div>
 
