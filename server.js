@@ -199,9 +199,9 @@ app.post('/api/competitions/:id/events', requireAuth, (req, res) => {
 
 app.put('/api/competitions/:id/events/:eid', requireAuth, (req, res) => {
   if (!ownedComp(req, res)) return;
-  const { name, unit, sort_direction, position } = req.body;
-  db.prepare('UPDATE events SET name = COALESCE(?, name), unit = COALESCE(?, unit), sort_direction = COALESCE(?, sort_direction), position = COALESCE(?, position) WHERE id = ? AND competition_id = ?')
-    .run(name?.trim() || null, unit || null, sort_direction || null, position ?? null, req.params.eid, req.params.id);
+  const { name, unit, sort_direction, position, mode } = req.body;
+  db.prepare('UPDATE events SET name = COALESCE(?, name), unit = COALESCE(?, unit), sort_direction = COALESCE(?, sort_direction), position = COALESCE(?, position), mode = COALESCE(?, mode) WHERE id = ? AND competition_id = ?')
+    .run(name?.trim() || null, unit ?? null, sort_direction || null, position ?? null, mode || null, req.params.eid, req.params.id);
   res.json({ ok: true });
 });
 

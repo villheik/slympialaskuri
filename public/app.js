@@ -1,4 +1,4 @@
-import { createApp, ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from '/vendor/vue.js'
+import { createApp, ref, computed, reactive, watch, nextTick, onMounted, onBeforeUnmount } from '/vendor/vue.js'
 
 // ── API ──────────────────────────────────────────────────────────────────────
 async function api(method, path, body) {
@@ -111,6 +111,29 @@ createApp({
 
     const pendingEvents = computed(() => (state.value?.events || []).filter(ev => ev.status === 'pending'))
     const completedEvents = computed(() => (state.value?.events || []).filter(ev => ev.status === 'completed'))
+
+    const editValues = reactive({ name: '', unit: '', mode: 'individual', sort_direction: 'desc' })
+
+    function openEvent(evId) {
+      openEventId.value = openEventId.value === evId ? null : evId
+      if (openEventId.value) {
+        const ev = state.value?.events.find(e => e.id === evId)
+        if (ev) { editValues.name = ev.name; editValues.unit = ev.unit ?? ''; editValues.mode = ev.mode; editValues.sort_direction = ev.sort_direction }
+      }
+    }
+
+    async function saveEventEdit(eid) {
+      try {
+        await put(`/api/competitions/${currentComp.value.id}/events/${eid}`, {
+          name: editValues.name.trim() || undefined,
+          unit: editValues.unit.trim() || null,
+          mode: editValues.mode,
+          sort_direction: editValues.sort_direction,
+        })
+        toast('Tallennettu')
+        await loadState()
+      } catch(e) { toast(e.message) }
+    }
 
     // ── Helpers ──
     function colLabel(colId) {
@@ -483,6 +506,7 @@ createApp({
       colLabel, isSortableCol, cellValue,
       sortBy, sortIndicator, teamMembersFor, customValueFor,
       eventPointsFor, resultFor, entrantsFor, modeLabel, dirLabel,
+      editValues, openEvent, saveEventEdit,
       openComp, doLogin, doLogout, createComp, switchTab,
       addParticipant, deleteParticipant,
       addTeam, deleteTeam,
@@ -661,7 +685,7 @@ createApp({
         <template v-if="activeTab === 'events'">
           <div v-if="!state.events.length" class="empty">Ei lajeja.</div>
           <div v-for="ev in state.events" :key="ev.id" class="event-card">
-            <div class="event-header" @click="openEventId = openEventId === ev.id ? null : ev.id">
+            <div class="event-header" @click="openEvent(ev.id)">
               <span class="event-name">{{ ev.name }}</span>
               <span class="event-meta">{{ modeLabel(ev) }}{{ ev.unit ? ' · ' + ev.unit : '' }}</span>
               <span class="event-status" :class="ev.status === 'completed' ? 'status-completed' : 'status-pending'">
@@ -669,6 +693,22 @@ createApp({
               </span>
             </div>
             <div v-if="openEventId === ev.id" class="event-body">
+              <div class="section-title">Muokkaa</div>
+              <div class="input-row" style="margin-bottom:6px">
+                <input v-model="editValues.name" type="text" placeholder="Lajin nimi">
+                <input v-model="editValues.unit" type="text" placeholder="Yksikkö" style="max-width:110px">
+              </div>
+              <div class="input-row" style="margin-bottom:10px">
+                <select v-model="editValues.mode">
+                  <option value="individual">Yksilölaji</option>
+                  <option value="team">Tiimilaji</option>
+                </select>
+                <select v-model="editValues.sort_direction">
+                  <option value="desc">Suurin voittaa</option>
+                  <option value="asc">Pienin voittaa</option>
+                </select>
+                <button class="btn-primary btn-sm" @click="saveEventEdit(ev.id)">Tallenna</button>
+              </div>
               <div class="section-title">Pisteet sijoittain</div>
               <div class="points-grid">
                 <template v-for="ep in eventPointsFor(ev.id)" :key="ep.rank">
